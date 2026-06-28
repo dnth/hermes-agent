@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import io
 import os
+import platform
 import subprocess
 import sys
 import textwrap
@@ -231,11 +232,26 @@ class TestStdioReconfigureErrorHandling:
         hb.apply_windows_utf8_bootstrap()
 
 
+class TestWindowsPlatformProbeGuard:
+    def test_windows_bootstrap_disables_platform_syscmd_subprocess(self):
+        hb = _fresh_import()
+        hb._IS_WINDOWS = True
+        hb._bootstrap_applied = False
+
+        original = getattr(platform, "_syscmd_ver", None)
+        try:
+            hb.apply_windows_utf8_bootstrap()
+
+            assert platform._syscmd_ver("Windows", "", "") == ("Windows", "", "")
+        finally:
+            if original is not None:
+                platform._syscmd_ver = original
+
+
 class TestDetachOrphanConsole:
     """detach_orphan_console() frees a solo-owned console (the uv pythonw→python
     phantom) but leaves a shared interactive console attached, and is a pure
-    no-op on POSIX. It is intentionally NOT run at import time — only background
-    entry points call it, never the interactive CLI/TUI."""
+    no-op on POSIX. It is intentionally NOT run at import time."""
 
     def test_noop_on_posix(self):
         hb = _fresh_import()
@@ -243,6 +259,8 @@ class TestDetachOrphanConsole:
         assert hb.detach_orphan_console() is False
 
     def test_not_called_at_import_time(self):
+        # The FreeConsole catch-all must be opt-in per background entry point,
+        # never an import side effect (would detach the interactive CLI/TUI).
         import pathlib
         src = pathlib.Path(_fresh_import().__file__).read_text(encoding="utf-8")
         body = src.split("def detach_orphan_console")[0]
